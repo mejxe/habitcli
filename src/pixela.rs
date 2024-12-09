@@ -107,6 +107,67 @@ impl Session {
         }
         Ok(commits_sum.to_string())
     }
+    pub fn create_user(&self, user_specified_token: &str, username: &str, not_minor:bool, tos:bool) -> Result<()> {
+        let client = &self.client;
+            let url = format!("https://pixe.la/v1/users/");
+            if !tos || !not_minor {
+                return Err(error::Error::PixelaError(String::from("You didn't agree to TOS or you're a minor.")));
+            }
+        let response = client
+            .post(url)
+            .json(&serde_json::json!({
+                "token": user_specified_token,
+                "username": username,
+                "agreeTermsOfService": "yes",
+                "notMinor": "yes"
+            }))
+            .send();
+        let response: serde_json::Value = response.unwrap().json().map_err(|err| error::Error::ReqwestError(err))?;
+        match response.get("isSuccess") {
+            None => return Err(error::Error::PixelaError(response.get("message").unwrap().to_string())),
+            Some(message) => {if message == false {return Err(error::Error::PixelaError(response.get("message").unwrap().to_string()))}}
+        }
+        return Ok(())
+    }
+    pub fn create_graph(&self, username:&str, token:&str, id: &str, name: &str, number_type: &str, unit: &str, color: &str) -> Result<()> {
+        validate_args(color, number_type)?;
+        let response = self.client
+            .post(format!("https://pixe.la/v1/users/{}/graphs", username ))
+            .header("X-USER-TOKEN", token)
+            .json(&serde_json::json!(
+                    {
+                        "id": id,
+                        "name": name,
+                        "type": number_type,
+                        "unit": unit,
+                        "color": color,
+                    }
+                ))
+            .send();
+        let response: serde_json::Value = response.unwrap().json().map_err(|err| error::Error::PixelaError(err.to_string()))?;
+        match response.get("isSuccess") {
+            None => return Err(error::Error::PixelaError(response.get("message").unwrap().to_string())),
+            Some(message) => {if message == false {return Err(error::Error::PixelaError(response.get("message").unwrap().to_string()))}}
+        }
+        return Ok(());
+    }
+    }
+pub fn validate_args(color: &str, _type: &str) -> Result<()> {
+    let valid_colors: [&str; 6] = ["shibafu", "momiji", "sora", "ichou", "ajisai", "kuro"];
+    let valid_types: [&str;2] = ["int", "float"];
+    if valid_colors.contains(&color) && valid_types.contains(&_type) {
+        return Ok(());
+    }
+    else if !valid_colors.contains(&color) {
+        return Err(error::Error::PixelaError("Wrong color name".to_string()))
+    }
+    else if !valid_types.contains(&_type) {
+        return Err(error::Error::PixelaError("Wrong type".to_string()))
+    }
+    else {
+        return Err(error::Error::PixelaError("Wrong color name and type".to_string()))
+    }
+
 
     /* TODO in the future
     pub(crate) async fn async_send(

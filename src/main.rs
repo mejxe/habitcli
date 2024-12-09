@@ -11,6 +11,11 @@ fn main() -> Result<(), Error> {
     let mut worker = Worker::new(session);
 // match statement for every possible user inputted command
     match args.command_type {
+        args::CommandType::Signup(arguments) => {
+            if let ParsedArguments::NewUserData(args) = arguments.into_args() {
+                worker.call_create_user(args)?;
+            }
+        }
         args::CommandType::Send(arguments) => {
             worker.login()?;
             if let ParsedArguments::PixelArgs(args) = arguments.into_args() {
@@ -31,6 +36,12 @@ fn main() -> Result<(), Error> {
                     Ok(_) => (),
                     Err(e) => println!("{:?}", e),
                 }
+            }
+        }
+        args::CommandType::Create(arguments) => {
+            worker.login()?;
+            if let ParsedArguments::GraphCreateArgs(args) = arguments.into_args() {
+                worker.call_create_graph(args)?;
             }
         }
         args::CommandType::List(_) => {

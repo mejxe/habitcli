@@ -6,9 +6,9 @@ pub mod error;
 
 use std::fmt::Display;
 
-use error::Error;
+use error::{Result,Error};
 
-use args::{LoginArgs, PixelArgs, SumGraphArgs, SumArgs};
+use args::{CreateGraphArgs, LoginArgs, NewUserArgs, PixelArgs, SumArgs, SumGraphArgs};
 use pixela::*;
 pub struct Worker {
     /*
@@ -38,7 +38,7 @@ impl Worker {
             graph_to_sum2: None,
         }
     }
-    pub fn login(&mut self) -> Result<(), Error> {
+    pub fn login(&mut self) -> Result<()> {
         // gets data from local database and saves it in the struct
         let user = user_data::User::new();
         let data = user.get_user_data()?;
@@ -75,7 +75,7 @@ impl Worker {
             Err(e) => println!("There was an error. {:?}", e),
         };
     }
-    pub fn handle_sum_graph(&self, args: SumArgs) -> Result<(), Error>{
+    pub fn handle_sum_graph(&self, args: SumArgs) -> Result<()>{
         let name = &self.name.to_owned().expect("Data should be there");
         let api_key = &self.api_key.to_owned().expect("Data should be there");
         let graph_names = vec![self.graph_to_sum1.clone().unwrap(), self.graph_to_sum2.clone().unwrap()];
@@ -110,16 +110,16 @@ impl Worker {
     fn create_url(&self, graph: &str, name: &str) -> String {
         format!("https://pixe.la/v1/users/{name}/graphs/{graph}")
     }
-    pub fn call_save_data(&self, args: LoginArgs) -> Result<(), Error> {
+    pub fn call_save_data(&self, args: LoginArgs) -> Result<()> {
         let user = user_data::User::new();
         Ok(user.set_user_data(args.name, args.api_key)?)
     }
-    pub fn call_save_sum_graph(&self, args: SumGraphArgs) -> Result<(), Error> {
+    pub fn call_save_sum_graph(&self, args: SumGraphArgs) -> Result<()> {
         let user = user_data::User::new();
         (user.setup_sum_graph(args.sum_graph, args.graph_to_sum1, args.graph_to_sum2))?;
         Ok(())
     }
-    pub fn call_list(&self) -> Result<(), Error> {
+    pub fn call_list(&self) -> Result<()> {
         let name = &self.name.to_owned().expect("Data should be there");
         let api_key = &self.api_key.to_owned().expect("Data should be there");
         let url = format!("https://pixe.la/v1/users/{name}/graphs/");
@@ -130,7 +130,27 @@ impl Worker {
 
         Ok(())
     }
-    pub fn print_data(&self) -> Result<(), Error> {
+    pub fn call_create_user(&self, args: NewUserArgs) -> Result<()> {
+        let NewUserArgs{token, username, minor, tos} = args;
+        let _ = &self.session.create_user(token, username, minor, tos)?;
+        println!("Success: Account created, from now on you are logged in on this device");
+        match &self.call_save_data(LoginArgs{name: username, api_key: token}) {
+            Ok(_) => (),
+            Err(err) => println!("Local database failure: {err}"),
+        }
+        return Ok(());
+
+    }
+    pub fn call_create_graph(&self, args: CreateGraphArgs) -> Result<()> {
+        let CreateGraphArgs{name, id, number_type, color, unit} = args;
+        let username = &self.name.to_owned().expect("Data should be there");
+        let token = &self.api_key.to_owned().expect("Data should be there");
+        self.session.create_graph(username, token, id, name, number_type, unit, color)?;
+        println!("Success: New graph created, check it out at https://pixe.la/v1/users/{}/graphs/{}.html.", username, id);
+        return Ok(());
+
+    }
+    pub fn print_data(&self) -> Result<()> {
         println!("{}", &self);
         Ok(())
     }

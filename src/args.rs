@@ -6,12 +6,29 @@ pub enum ParsedArguments<'a> {
     PixelArgs(PixelArgs<'a>),
     LoginArgs(LoginArgs<'a>),
     SumGraphArgs(SumGraphArgs<'a>),
-    SumArgs(SumArgs<'a>)
+    SumArgs(SumArgs<'a>),
+    NewUserData(NewUserArgs<'a>),
+    GraphCreateArgs(CreateGraphArgs<'a>),
 }
 
 // a func that turns data from each command into an enum standarized enum variant
 pub trait IntoArguments {
     fn into_args(&self) -> ParsedArguments;
+}
+#[derive(Debug)]
+pub struct CreateGraphArgs<'a> {
+    pub id: &'a str,
+    pub name: &'a str ,
+    pub number_type: &'a str,
+    pub unit: &'a str,
+    pub color: &'a str,
+}
+#[derive(Debug)]
+pub struct NewUserArgs<'a> {
+    pub token: &'a str,
+    pub username: &'a str,
+    pub minor: bool,
+    pub tos: bool,
 }
 #[derive(Debug)]
 pub struct PixelArgs<'a> {
@@ -48,6 +65,8 @@ pub struct HabitCLIArgs {
 // all possible commands
 #[derive(Debug, Subcommand)]
 pub enum CommandType {
+    /// Use to create a pixela account.
+    Signup(NewUser),
     /// Use to send pixels to Pixela.
     Send(SendPixel),
     /// Use to get pixels data from Pixela.
@@ -62,7 +81,22 @@ pub enum CommandType {
     Data(GetData),
     /// Sums today progress of your graphs to sum and uploads it to sum graph.
     Sum(SumGraphs),
+    /// Creates a new graph on Pixela.
+    Create(CreateGraph),
 }
+
+#[derive(Debug, Args)]
+pub struct NewUser {
+    /// Your new password.
+    password: String,
+    /// Your new username.
+    username: String,
+    /// Do you agree to Pixela's TOS? [yes/no]
+    tos: String,
+    /// Are you a minor? [yes/no]
+    minor: String
+}
+
 #[derive(Debug, Args)]
 pub struct GetList {}
 
@@ -76,6 +110,23 @@ pub struct SumGraphs {
 #[derive(Debug, Args)]
 pub struct GetData;
 
+#[derive(Parser,Debug)]
+pub struct CreateGraph {
+    /// ID of the new graph.
+    pub id: String,
+    
+    /// Name of the new graph.
+    pub name: String,
+
+    /// Type of the value of the unit (only int and float are supported)
+    pub number_type: String,
+
+    /// Unit used to track data on your graph (ex. hours, commits, miles).
+    pub unit: String,
+
+    /// Color of graphs pixels. Valid ones are: shibafu (green), momiji (red), sora (blue), ichou (yellow), ajisai (purple) and kuro (black).
+    pub color: String,
+}
 #[derive(Debug, Args)]
 pub struct SumGraph {
     /// List of graphs you want to sum in a sum graph (just the graph names) [max 3].
@@ -84,6 +135,23 @@ pub struct SumGraph {
     /// Sum graph (just the name).
     #[clap(short,long)]
     sum_graph: String
+}
+impl IntoArguments for CreateGraph {
+    fn into_args(&self) -> ParsedArguments {
+        let CreateGraph{id, name, number_type, unit, color} = &self;
+        let args = CreateGraphArgs{id, name, number_type, unit, color};
+        return ParsedArguments::GraphCreateArgs(args)
+    }
+}
+impl IntoArguments for NewUser {
+    fn into_args(&self) -> ParsedArguments {
+        let username = &self.username;
+        let token = &self.username;
+        let minor = if &self.minor == "yes" {true} else {false}; 
+        let tos = if &self.tos == "yes" {true} else {false}; 
+        let args = NewUserArgs{username, token, minor, tos};
+        return ParsedArguments::NewUserData(args)
+    }
 }
 impl IntoArguments for SumGraph {
     fn into_args(&self) -> ParsedArguments {

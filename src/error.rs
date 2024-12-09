@@ -10,14 +10,17 @@ pub enum Error {
     MissingEntryInDatabase(String),
     TroubleSavingLoginInfo(String),
     ReqwestError(reqwest::Error),
+    PixelaError(String),
 }
+
 impl Debug for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Error::*;
         match &self {
             MissingEntryInDatabase(msg) => write!(f, "Missing data in database: {}", msg),
             TroubleSavingLoginInfo(msg) => write!(f, "{:?}", msg),
-            ReqwestError(err) => write!(f, "{:?}", err)
+            ReqwestError(err) => write!(f, "{:?}", err),
+            PixelaError(msg) => write!(f, "Api call failed! Pixela responded with: {}",msg)
         }
     }
 }
@@ -28,7 +31,8 @@ impl Display for Error {
         match &self {
             MissingEntryInDatabase(err) => write!(f, "{}", err),
             TroubleSavingLoginInfo(err) => write!(f, "There was an error with saving your data: {err}"),
-            ReqwestError(err) => write!(f, "{}", err)
+            ReqwestError(err) => write!(f, "{}", err),
+            PixelaError(msg) => write!(f, "Api call failed! Pixela responded with: {}",msg)
 
 
         }
