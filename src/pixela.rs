@@ -1,9 +1,9 @@
 /*
  Api to communicate with Pixe.la web api
  */
-use chrono;
+use chrono::{self, NaiveDate};
 use reqwest::blocking;
-use serde_json;
+use serde_json::{self, Value};
 use crate::error;
 
 
@@ -129,7 +129,7 @@ impl Session {
         }
         return Ok(())
     }
-    pub fn create_graph(&self, username:&str, token:&str, id: &str, name: &str, number_type: &str, unit: &str, color: &str) -> Result<()> {
+    pub fn create_graph(&self, username: &str, token: &str, id: &str, name: &str, number_type: &str, unit: &str, color: &str) -> Result<()> {
         validate_args(color, number_type)?;
         let response = self.client
             .post(format!("https://pixe.la/v1/users/{}/graphs", username ))
@@ -151,7 +151,54 @@ impl Session {
         }
         return Ok(());
     }
+    pub fn get_streak(&self, username: &str, token: &str, graph_name: &str) -> Result<u32>{
+        let client = &self.client;
+        let url = format!("https://pixe.la/v1/users/{}/graphs/{}/pixels", username, graph_name);
+
+        let response = client.get(url).header("X-USER-TOKEN", token).query(&serde_json::json!(
+                    {
+                        "withBody": "true",
+                    }
+                )).send();
+        let response: serde_json::Value = response.unwrap().json().map_err(|err| error::Error::ReqwestError(err))?;
+        match response.get("pixels") {
+            None => return Err(error::Error::PixelaError(response.get("message").unwrap().to_string())),
+            Some(message) => {if message == false {return Err(error::Error::PixelaError(response.get("message").unwrap().to_string()))}}
+        }
+        Ok(calculate_streak(response))
     }
+
+}
+pub fn calculate_streak(pixels: Value) -> u32 {
+    let pixels_array = pixels.get("pixels").unwrap().as_array().unwrap();
+    let mut streak = 0;
+
+    // Is the streak valid - if there wasn't any commits yesterday it is not
+    let yesterday: NaiveDate = (chrono::Local::now()-chrono::Days::new(1)).date_naive();
+    let mut streak_up = false;
+
+    // loop to compare dates
+    for i in 1..pixels_array.len() {
+        let date1 = NaiveDate::parse_from_str(pixels_array[i-1].get("date").unwrap().as_str().unwrap(), "%Y%m%d").unwrap();
+        let date2 = NaiveDate::parse_from_str(pixels_array[i].get("date").unwrap().as_str().unwrap(), "%Y%m%d").unwrap();
+        let quantity1 = pixels_array[i-1].get("quantity").unwrap().as_str().unwrap();
+        let quantity2 = pixels_array[i].get("quantity").unwrap().as_str().unwrap();
+        let difference = (date2-date1).num_days();
+        if quantity1 == "0" || quantity2 == "0" || difference > 1  {
+            streak = 0
+        }
+        if date1 == yesterday || date2 == yesterday {
+            streak_up = true;
+        }
+
+        streak += 1;
+    }
+    if !streak_up {
+        streak = 0
+    }
+    return streak;
+}
+    
 pub fn validate_args(color: &str, _type: &str) -> Result<()> {
     let valid_colors: [&str; 6] = ["shibafu", "momiji", "sora", "ichou", "ajisai", "kuro"];
     let valid_types: [&str;2] = ["int", "float"];
@@ -167,37 +214,6 @@ pub fn validate_args(color: &str, _type: &str) -> Result<()> {
     else {
         return Err(error::Error::PixelaError("Wrong color name and type".to_string()))
     }
-
-
-    /* TODO in the future
-    pub(crate) async fn async_send(
-        &self,
-        url: &str,
-        quantity: &str,
-        date: Option<&str>,
-        token: &str
-        ) -> Result<()>{
-        let date: &str = match date {
-            Some(date) => date,
-            None => &chrono::Local::now().format("%Y%m%d").to_string(),
-        };
-        let response = client
-            .post(url)
-            .header("X-USER-TOKEN", token)
-            .json(&serde_json::json!({
-                "date": date,
-                "quantity": quantity
-            }))
-            .send()
-            .await
-            .map_err(|err| Error::ReqwestError(err))?;
-
-        let response: serde_json::Value = response.json().await.map_err(|err| Error::ReqwestError(err))?;
-        return Ok(())
-    }
-    */
-        
-
 }
 pub enum CallResult {
     // variants for each possible output of api communication functions

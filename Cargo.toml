@@ -2,7 +2,7 @@
 name = "habitcli"
 version = "1.0.0"
 edition = "2021"
-authors = "mejxe"
+authors = ["mejxe"]
 
 [dependencies]
 chrono = "0.4.38"

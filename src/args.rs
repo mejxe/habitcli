@@ -9,12 +9,18 @@ pub enum ParsedArguments<'a> {
     SumArgs(SumArgs<'a>),
     NewUserData(NewUserArgs<'a>),
     GraphCreateArgs(CreateGraphArgs<'a>),
+    StreakGetArgs(StreakGetArgs<'a>)
 }
 
 // a func that turns data from each command into an enum standarized enum variant
 pub trait IntoArguments {
     fn into_args(&self) -> ParsedArguments;
 }
+#[derive(Debug)]
+pub struct StreakGetArgs<'a> {
+    pub graph_id: &'a str
+}
+
 #[derive(Debug)]
 pub struct CreateGraphArgs<'a> {
     pub id: &'a str,
@@ -83,6 +89,8 @@ pub enum CommandType {
     Sum(SumGraphs),
     /// Creates a new graph on Pixela.
     Create(CreateGraph),
+    /// Calculates your current streak of consecutive pixels
+    Streak(GetStreak)
 }
 
 #[derive(Debug, Args)]
@@ -100,6 +108,11 @@ pub struct NewUser {
 #[derive(Debug, Args)]
 pub struct GetList {}
 
+#[derive(Debug, Args)]
+pub struct GetStreak {
+    /// Graph id
+    graph_id: String
+}
 #[derive(Debug, Args)]
 pub struct SumGraphs {
     /// Optional date to sum from. By default today.
@@ -135,6 +148,13 @@ pub struct SumGraph {
     /// Sum graph (just the name).
     #[clap(short,long)]
     sum_graph: String
+}
+impl IntoArguments for GetStreak {
+    fn into_args(&self) -> ParsedArguments {
+        let graph_id = &self.graph_id;
+        let args = StreakGetArgs{graph_id};
+        return ParsedArguments::StreakGetArgs(args)
+    }
 }
 impl IntoArguments for CreateGraph {
     fn into_args(&self) -> ParsedArguments {

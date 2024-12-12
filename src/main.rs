@@ -48,6 +48,12 @@ fn main() -> Result<(), Error> {
             worker.login()?;
             worker.call_list()?;
         }
+        args::CommandType::Streak(arguments) => {
+            worker.login()?;
+            if let ParsedArguments::StreakGetArgs(args) = arguments.into_args() {
+                worker.call_streak(args)?
+            }
+        }
         args::CommandType::SetupSum(arguments) => {
             if let ParsedArguments::SumGraphArgs(args) = arguments.into_args()  {
                 match worker.call_save_sum_graph(args){

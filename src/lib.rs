@@ -8,7 +8,7 @@ use std::fmt::Display;
 
 use error::{Result,Error};
 
-use args::{CreateGraphArgs, LoginArgs, NewUserArgs, PixelArgs, SumArgs, SumGraphArgs};
+use args::{CreateGraphArgs, LoginArgs, NewUserArgs, PixelArgs, StreakGetArgs, SumArgs, SumGraphArgs};
 use pixela::*;
 pub struct Worker {
     /*
@@ -85,6 +85,7 @@ impl Worker {
         let date = args.date;
         let url = &self.create_url(&self.sum_graph.clone().unwrap(), &name);
         self.session.send_pixel(url, &commits, date, api_key)?;
+        println!("Success! Your Sum Graph has been updated.");
         return Ok(());
     }
         
@@ -149,6 +150,13 @@ impl Worker {
         println!("Success: New graph created, check it out at https://pixe.la/v1/users/{}/graphs/{}.html.", username, id);
         return Ok(());
 
+    }
+    pub fn call_streak(&self, args: StreakGetArgs) -> Result<()> {
+        let username = &self.name.to_owned().expect("Data should be there");
+        let token = &self.api_key.to_owned().expect("Data should be there");
+        let streak = self.session.get_streak(username, token, &args.graph_id)?;
+        println!("Your streak for the {} graph is {}!", &args.graph_id, streak);
+        Ok(())
     }
     pub fn print_data(&self) -> Result<()> {
         println!("{}", &self);
