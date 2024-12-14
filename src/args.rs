@@ -73,24 +73,24 @@ pub struct HabitCLIArgs {
 pub enum CommandType {
     /// Use to create a pixela account.
     Signup(NewUser),
+    /// Use to log in with your pixela api token and pixela name.
+    Login(LoginUser),
+    /// Print your data.
+    Data(GetData),
+    /// Creates a new graph on Pixela.
+    Create(CreateGraph),
     /// Use to send pixels to Pixela.
     Send(SendPixel),
     /// Use to get pixels data from Pixela.
     Get(GetPixel),
-    /// Use to log in with your pixela api token and pixela name.
-    Login(LoginUser),
     /// List all graphs.
     List(GetList),
+    /// Calculates your current streak of consecutive pixels
+    Streak(GetStreak),
     /// Setup sum graph functionality.
     SetupSum(SumGraph),
-    /// Print your data.
-    Data(GetData),
-    /// Sums today progress of your graphs to sum and uploads it to sum graph.
+    /// Sums today progress of your "graphs to sum" and uploads it to sum graph.
     Sum(SumGraphs),
-    /// Creates a new graph on Pixela.
-    Create(CreateGraph),
-    /// Calculates your current streak of consecutive pixels
-    Streak(GetStreak)
 }
 
 #[derive(Debug, Args)]

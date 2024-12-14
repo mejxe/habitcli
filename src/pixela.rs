@@ -1,3 +1,5 @@
+use std::time;
+
 /*
  Api to communicate with Pixe.la web api
  */
@@ -167,15 +169,17 @@ impl Session {
         }
         Ok(calculate_streak(response))
     }
-
 }
+
+// Functions not tied to the Pixela web api below
 pub fn calculate_streak(pixels: Value) -> u32 {
+    // calculates streak and prints string visualizing the streak
     let pixels_array = pixels.get("pixels").unwrap().as_array().unwrap();
+    if pixels_array.len() == 0 { return 0 }
     let mut streak = 0;
 
-    // Is the streak valid - if there wasn't any commits yesterday it is not
-    let yesterday: NaiveDate = (chrono::Local::now()-chrono::Days::new(1)).date_naive();
-    let mut streak_up = false;
+    let mut streak_going = false;
+    let mut streak_valid = false;
 
     // loop to compare dates
     for i in 1..pixels_array.len() {
@@ -184,21 +188,44 @@ pub fn calculate_streak(pixels: Value) -> u32 {
         let quantity1 = pixels_array[i-1].get("quantity").unwrap().as_str().unwrap();
         let quantity2 = pixels_array[i].get("quantity").unwrap().as_str().unwrap();
         let difference = (date2-date1).num_days();
-        if quantity1 == "0" || quantity2 == "0" || difference > 1  {
-            streak = 0
-        }
-        if date1 == yesterday || date2 == yesterday {
-            streak_up = true;
-        }
 
-        streak += 1;
+        if difference > 1 || quantity1 == "0" || quantity2 == "0" {
+            streak_going = false;
+            streak = 0;
+        }
+        else if difference == 1 && streak_going {
+            streak += 1
+        }
+        if !streak_going && quantity2 != "0" {
+            streak += 1;
+            streak_going = true;
+        }
+        
     }
-    if !streak_up {
-        streak = 0
+
+    // Is the streak valid - if there wasn't any commits yesterday it is not
+    let today: NaiveDate = (chrono::Local::now()).date_naive();
+    let yesterday: NaiveDate = today-chrono::Days::new(1);
+    let last_date = NaiveDate::parse_from_str(pixels_array.last().unwrap().get("date").unwrap().as_str().unwrap(), "%Y%m%d").unwrap();
+    if last_date == today || last_date == yesterday {
+        streak_valid = true;
     }
+
+    if !streak_valid {
+        streak = 0;
+    };
+
     return streak;
 }
+
+pub fn prepare_streak_string(days: u32, graph_name: &str) -> String{
+    let months = (days/30)%12;
+    let all_days = (days - months*30)%31;
+    let years = days/365;
+    format!("Your streak for the {graph_name} is {days} days long! (OR {years} year(s), {months} month(s) and {all_days} day(s).")
     
+}
+
 pub fn validate_args(color: &str, _type: &str) -> Result<()> {
     let valid_colors: [&str; 6] = ["shibafu", "momiji", "sora", "ichou", "ajisai", "kuro"];
     let valid_types: [&str;2] = ["int", "float"];
@@ -215,27 +242,29 @@ pub fn validate_args(color: &str, _type: &str) -> Result<()> {
         return Err(error::Error::PixelaError("Wrong color name and type".to_string()))
     }
 }
+// enums and structs
+
 pub enum CallResult {
     // variants for each possible output of api communication functions
     ApiResponse(Message),
     Heatmap(Heatmap),
     List(Vec<String>),
 }
-pub struct SumGraphSystem {
-    pub sum_amount: u32,
-}
-impl SumGraphSystem {
-    pub fn new() -> SumGraphSystem {
-        SumGraphSystem { sum_amount: 0 }
-    }
-    pub fn sum_graph_data(&mut self, graph_to_sum1_data: String, graph_to_sum2_data: String) {
-        let graph_to_sum1_data: u32 = graph_to_sum1_data.parse().unwrap();
-        let graph_to_sum2_data: u32 = graph_to_sum2_data.parse().unwrap();
-        self.sum_amount = graph_to_sum1_data+graph_to_sum2_data;
-
-    }
-
-}
+//pub struct SumGraphSystem {
+//    pub sum_amount: u32,
+//}
+//impl SumGraphSystem {
+//    pub fn new() -> SumGraphSystem {
+//        SumGraphSystem { sum_amount: 0 }
+//    }
+//    pub fn sum_graph_data(&mut self, graph_to_sum1_data: String, graph_to_sum2_data: String) {
+//        let graph_to_sum1_data: u32 = graph_to_sum1_data.parse().unwrap();
+//        let graph_to_sum2_data: u32 = graph_to_sum2_data.parse().unwrap();
+//        self.sum_amount = graph_to_sum1_data+graph_to_sum2_data;
+//
+//    }
+//
+//}
 #[derive(Debug)]
 pub struct Message {
     json_message: serde_json::Value,

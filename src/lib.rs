@@ -155,7 +155,7 @@ impl Worker {
         let username = &self.name.to_owned().expect("Data should be there");
         let token = &self.api_key.to_owned().expect("Data should be there");
         let streak = self.session.get_streak(username, token, &args.graph_id)?;
-        println!("Your streak for the {} graph is {}!", &args.graph_id, streak);
+        println!("{}", prepare_streak_string(streak, &args.graph_id));
         Ok(())
     }
     pub fn print_data(&self) -> Result<()> {
