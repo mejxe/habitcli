@@ -219,9 +219,9 @@ pub fn calculate_streak(pixels: Value) -> u32 {
 }
 
 pub fn prepare_streak_string(days: u32, graph_name: &str) -> String{
-    let months = (days/30)%12;
-    let all_days = (days - months*30)%31;
     let years = days/365;
+    let months = (days - years*365) / 30; 
+    let all_days = days - years*365 - months*30;
     format!("Your streak for the {graph_name} is {days} days long! (OR {years} year(s), {months} month(s) and {all_days} day(s).")
     
 }
@@ -250,21 +250,7 @@ pub enum CallResult {
     Heatmap(Heatmap),
     List(Vec<String>),
 }
-//pub struct SumGraphSystem {
-//    pub sum_amount: u32,
-//}
-//impl SumGraphSystem {
-//    pub fn new() -> SumGraphSystem {
-//        SumGraphSystem { sum_amount: 0 }
-//    }
-//    pub fn sum_graph_data(&mut self, graph_to_sum1_data: String, graph_to_sum2_data: String) {
-//        let graph_to_sum1_data: u32 = graph_to_sum1_data.parse().unwrap();
-//        let graph_to_sum2_data: u32 = graph_to_sum2_data.parse().unwrap();
-//        self.sum_amount = graph_to_sum1_data+graph_to_sum2_data;
-//
-//    }
-//
-//}
+
 #[derive(Debug)]
 pub struct Message {
     json_message: serde_json::Value,
