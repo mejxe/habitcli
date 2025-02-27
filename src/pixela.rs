@@ -21,7 +21,7 @@ impl Session {
         Session {client}
     }
 
-    pub(crate) fn get_pixel_info(
+    pub(crate) async fn get_pixel_info(
         &self,
         url: &str,
         name: &str,
@@ -36,7 +36,7 @@ impl Session {
         let url = format!("{url}/{date}");
 
         let response = client.get(url).header("X-USER-TOKEN", token).send();
-        let response: serde_json::Value = response.unwrap().json().map_err(|err| error::Error::ReqwestError(err))?;
+        let response: serde_json::Value = response.await.unwrap().json().await.map_err(|err| error::Error::ReqwestError(err))?;
 
         let quantity: u32 = match response.get("quantity") {
             Some(quantity) => quantity.as_str().unwrap().parse().unwrap(),
@@ -48,7 +48,7 @@ impl Session {
             quantity,
         )))
     }
-    pub(crate) fn send_pixel(
+    pub(crate) async fn send_pixel(
         &self,
         url: &str,
         quantity: &str,
@@ -69,18 +69,19 @@ impl Session {
             }))
             .send();
 
-        let response: serde_json::Value = response.unwrap().json().map_err(|err| error::Error::ReqwestError(err))?;
+        let response: serde_json::Value = response.await.unwrap().json().await.map_err(|err| error::Error::ReqwestError(err))?;
+        dbg!(&response);
 
         Ok(CallResult::ApiResponse(Message::new(response)))
     }
-    pub(crate) fn get_graph_list(
+    pub(crate) async fn get_graph_list(
         &self,
         token: &str,
         url: &str
     ) -> Result<CallResult> {
         let client = &self.client;
         let response = client.get(url).header("X-USER-TOKEN", token).send();
-        let response: serde_json::Value = response.unwrap().json().map_err(|err| error::Error::ReqwestError(err))?;
+        let response: serde_json::Value = response.await.unwrap().json().await.map_err(|err| error::Error::ReqwestError(err))?;
         let graphs = if let Some(graphs) = response.get("graphs") {graphs.to_owned()} else { return Err(error::Error::MissingEntryInDatabase("No graphs to display".to_string()))}; // dfq error handling
         let graphs: Vec<String> = graphs.as_array().unwrap()
             .iter()
@@ -90,7 +91,7 @@ impl Session {
 
        
     }
-    pub fn create_user(&self, user_specified_token: &str, username: &str, not_minor:bool, tos:bool) -> Result<()> {
+    pub async fn create_user(&self, user_specified_token: &str, username: &str, not_minor:bool, tos:bool) -> Result<()> {
         let client = &self.client;
             let url = format!("https://pixe.la/v1/users/");
             if !tos || !not_minor {
@@ -105,14 +106,14 @@ impl Session {
                 "notMinor": "yes"
             }))
             .send();
-        let response: serde_json::Value = response.unwrap().json().map_err(|err| error::Error::ReqwestError(err))?;
+        let response: serde_json::Value = response.await.unwrap().json().await.map_err(|err| error::Error::ReqwestError(err))?;
         match response.get("isSuccess") {
             None => return Err(error::Error::PixelaError(response.get("message").unwrap().to_string())),
             Some(message) => {if message == false {return Err(error::Error::PixelaError(response.get("message").unwrap().to_string()))}}
         }
         return Ok(())
     }
-    pub fn create_graph(&self, username: &str, token: &str, id: &str, name: &str, number_type: &str, unit: &str, color: &str) -> Result<()> {
+    pub async fn create_graph(&self, username: &str, token: &str, id: &str, name: &str, number_type: &str, unit: &str, color: &str) -> Result<()> {
         validate_args(color, number_type)?;
         let response = self.client
             .post(format!("https://pixe.la/v1/users/{}/graphs", username ))
@@ -127,14 +128,14 @@ impl Session {
                     }
                 ))
             .send();
-        let response: serde_json::Value = response.unwrap().json().map_err(|err| error::Error::PixelaError(err.to_string()))?;
+        let response: serde_json::Value = response.await.unwrap().json().await.map_err(|err| error::Error::PixelaError(err.to_string()))?;
         match response.get("isSuccess") {
             None => return Err(error::Error::PixelaError(response.get("message").unwrap().to_string())),
             Some(message) => {if message == false {return Err(error::Error::PixelaError(response.get("message").unwrap().to_string()))}}
         }
         return Ok(());
     }
-    pub fn get_streak(&self, username: &str, token: &str, graph_name: &str) -> Result<u32>{
+    pub async fn get_streak(&self, username: &str, token: &str, graph_name: &str) -> Result<u32>{
         let client = &self.client;
         let url = format!("https://pixe.la/v1/users/{}/graphs/{}/pixels", username, graph_name);
 
@@ -143,7 +144,7 @@ impl Session {
                         "withBody": "true",
                     }
                 )).send();
-        let response: serde_json::Value = response.unwrap().json().map_err(|err| error::Error::ReqwestError(err))?;
+        let response: serde_json::Value = response.await.unwrap().json().await.map_err(|err| error::Error::ReqwestError(err))?;
         match response.get("pixels") {
             None => return Err(error::Error::PixelaError(response.get("message").unwrap().to_string())),
             Some(message) => {if message == false {return Err(error::Error::PixelaError(response.get("message").unwrap().to_string()))}}
@@ -163,7 +164,7 @@ impl Session {
         let response: serde_json::Value = response.unwrap().json().await.map_err(|err| error::Error::ReqwestError(err))?;
 
         let quantity: u32 = match response.get("quantity") {
-            Some(quantity) => quantity.as_u64().unwrap() as u32,
+            Some(quantity) => quantity.as_str().unwrap().parse::<u32>().unwrap(),
             None => 0,
         };
         *incr_pointer.lock().await += quantity;

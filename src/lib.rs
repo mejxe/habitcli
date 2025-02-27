@@ -6,7 +6,7 @@ pub mod error;
 
 use std::{fmt::Display, io::stdin, sync::Arc};
 
-use error::{Result,Error};
+use error::{Error, Result, SumGraphError, SumGraphErrorKind};
 
 use args::{CreateGraphArgs, LoginArgs, NewUserArgs, PixelArgs, StreakGetArgs, SumArgs, SumGraphArgs};
 use pixela::*;
@@ -20,13 +20,11 @@ pub struct Worker {
     session: Session,
     api_key: Option<String>,
     name: Option<String>,
-    sum_graph:Option<String>,
-    graph_to_sum1:Option<String>,
-    graph_to_sum2:Option<String>
+    sum_graphs: Option<SumGraphsStruct>,
 }
 impl Display for Worker {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f,"Username: {:?}\nSum graph: {:?}\nGraph to sum #1: {:?}\nGraph to sum#2: {:?}\n", self.name, self.sum_graph, self.graph_to_sum1, self.graph_to_sum2)
+        write!(f,"Username: {}\nSum Graphs Info:\n{}", self.name.as_ref().unwrap(), self.sum_graphs.as_ref().unwrap()) 
         }
     }
 impl Worker {
@@ -35,30 +33,22 @@ impl Worker {
             session,
             api_key: None,
             name: None,
-            sum_graph: None,
-            graph_to_sum1: None,
-            graph_to_sum2: None,
+            sum_graphs: None
         }
     }
     pub fn login(&mut self) -> Result<()> {
         // gets data from local database and saves it in the struct
         let user = user_data::User::new();
         let data = user.get_user_data()?;
-        let (name, token, sum_graph) = (data.name, data.token, data.sum_graph);
-        if let Some(graphs_to_sum) = data.graphs_to_sum {
-            self.graph_to_sum1 = Some(graphs_to_sum[0].clone());
-            self.graph_to_sum2 = Some(graphs_to_sum[1].clone());
-        };
-        if let Some(sum_graph) = sum_graph {
-            self.sum_graph = Some(sum_graph);
-        }
+        let (name, token) = (data.name, data.token);
         self.api_key = Some(token);
         self.name = Some(name);
+        self.sum_graphs =  SumGraphsStruct::load().ok();
         
         Ok(())
     }
 
-    pub fn call_send(&self, args: PixelArgs) {
+    pub async fn call_send(&self, args: PixelArgs<'_>) {
         let graph = args.graph;
         let date = args.date;
         let quantity = &args.quantity;
@@ -67,7 +57,7 @@ impl Worker {
         let url = &self.create_url(graph, &name);
         match &self
             .session
-            .send_pixel(url, quantity, date.as_deref(), &api_key)
+            .send_pixel(url, quantity, date.as_deref(), &api_key).await
         {
             Ok(call_result) => {
                 if let CallResult::ApiResponse(msg) = call_result {
@@ -80,7 +70,9 @@ impl Worker {
     pub async fn handle_sum_graph(&self, args: SumArgs<'_>) -> Result<()>{
         let name = self.name.clone().unwrap();
         let api_key = self.api_key.clone().unwrap();
-        let graphs = SumGraphsStruct::load()?;
+        let graphs = if let Some(graphs) = self.sum_graphs.as_ref() {
+            graphs
+        } else { return Err(Error::MissingEntryInDatabase("Sum graphs are not properly set up".to_string())) };
         let commits = Arc::new(Mutex::new(0));
         let mut tasks: Vec<JoinHandle<()>> = Vec::new();
         let date: String = match args.date {
@@ -88,35 +80,36 @@ impl Worker {
             None => chrono::Local::now().format("%Y%m%d").to_string(),
         };
 
-        for graph in graphs.sum_graphs {
-            for graph_name in graph.graphs_to_sum {
+        for graph in &graphs.sum_graphs {
+            for graph_name in &graph.graphs_to_sum {
                 let name = name.clone();
                 let api_key = api_key.clone();
                 let date = date.clone();
                 let commits = Arc::clone(&commits);
+                let graph_name = graph_name.clone();
                 let handle = tokio::spawn(async move {
                     let url = format!("https://pixe.la/v1/users/{}/graphs/{}",name, graph_name);
-                    Session::async_get_graph_val(&url, &date, &api_key.clone(), commits.clone()).await;
+                    Session::async_get_graph_val(&url, &date, &api_key.clone(), commits.clone()).await.unwrap();
                 });
                 tasks.push(handle);
             }   
+            for task in &mut tasks {
+                task.await.unwrap();
+            }
             let url = format!("https://pixe.la/v1/users/{}/graphs/{}",name, graph.sum_graph_name);
-            self.session.send_pixel(&url, &commits.lock().await.to_string(), args.date, &api_key);
+            let sendable_commits = commits.lock().await.to_string();
+            dbg!(&commits.lock().await.to_string());
+            self.session.send_pixel(&url, &sendable_commits, args.date, &api_key).await.unwrap();
+            dbg!(sendable_commits);
             *commits.lock().await = 0;
         }
-
-        for task in tasks {
-            task.await.unwrap();
-        }
-
-
 
         println!("Success! Your Sum Graph has been updated.");
         return Ok(());
     }
         
 
-    pub fn call_get(&self, args: PixelArgs) {
+    pub async fn call_get(&self, args: PixelArgs<'_>) {
         let graph = args.graph;
         let date = args.date;
         let name = &self.name.to_owned().expect("Data should be there");
@@ -124,7 +117,7 @@ impl Worker {
         let url = &self.create_url(graph, &name);
         match &self
             .session
-            .get_pixel_info(url, graph, date.as_deref(), &api_key)
+            .get_pixel_info(url, graph, date.as_deref(), &api_key).await
         {
             Ok(call_result) => {
                 if let CallResult::Heatmap(heatmap) = call_result {
@@ -141,17 +134,36 @@ impl Worker {
         let user = user_data::User::new();
         Ok(user.set_user_data(args.name, args.api_key)?)
     }
-    pub fn setup_graphs(&self, args: SumGraphArgs) -> Result<()> {
+    pub async fn setup_graphs(&self, args: SumGraphArgs) -> Result<()> {
         let mut sum_graphs: Vec<SumGraphStruct> = vec![];
+        let mut sum_graph_names_duplicate_tracker: Vec<String> = vec![];
+
+        let name = &self.name.to_owned().expect("Data should be there");
+        let api_key = &self.api_key.to_owned().expect("Data should be there");
+        let url = format!("https://pixe.la/v1/users/{name}/graphs/");
+        let correct_names = self.session.get_graph_list(api_key, &url).await;
+        let correct_names = if let Ok(CallResult::List(list)) = correct_names {
+            list
+        } else { return Err(Error::MissingEntryInDatabase("Unable to verify graph names, possibly graphs are non-existent".to_string()))};
+            
+
         while sum_graphs.len() < args.sum_graph_amount {
             let mut input: String = String::new();
-            let msg = if args.sum_graph_amount > 1 { format!("Enter data: (SumGraph_name graph_name1 ... graph_name{}", args.sum_graph_amount) } else {format!("Enter data: (SumGraph_name graph_name1")};
-            println!("{msg}");
+            println!("Enter data: (SumGraph_name graph_name(s)");
             stdin().read_line(&mut input).unwrap();
             let input: Vec<_> = input.trim().split(" ").collect();
             dbg!(&input);
             let sum_graph_name = input.get(0).unwrap().to_string();
+
+            // check for duplicates
+            match sum_graph_names_duplicate_tracker.contains(&sum_graph_name) { 
+                true => sum_graph_names_duplicate_tracker.push(sum_graph_name.clone()),
+                false => return Err(Error::SumGraphError(SumGraphError::new(error::SumGraphErrorKind::RepeatingNames)))
+            }
+
             let mut graphs: Vec<String> = input.into_iter().map(|n| n.to_string()).collect();
+            graphs.dedup();
+            graphs.iter().try_for_each(|name| -> Result<()> {if !correct_names.contains(name) {return Err(Error::SumGraphError(SumGraphError::new(SumGraphErrorKind::IncorrectNames)))}; return Ok(())})?;
             graphs.remove(0);
             sum_graphs.push(SumGraphStruct::new(sum_graph_name, graphs));
         }
@@ -159,20 +171,20 @@ impl Worker {
 
         Ok(())
     }
-    pub fn call_list(&self) -> Result<()> {
+    pub async fn call_list(&self) -> Result<()> {
         let name = &self.name.to_owned().expect("Data should be there");
         let api_key = &self.api_key.to_owned().expect("Data should be there");
         let url = format!("https://pixe.la/v1/users/{name}/graphs/");
-        let graph_list = &self.session.get_graph_list(api_key, &url);
+        let graph_list = &self.session.get_graph_list(api_key, &url).await;
         if let CallResult::List(list) = graph_list.as_ref().map_err(|e| Error::MissingEntryInDatabase(e.to_string()))?{
-            list.iter().for_each(|graph_id| println!("{}", graph_id));
+            list.iter().for_each(|graph_id| println!("Graph Name: {}", graph_id.trim_matches('"')));
         };
 
         Ok(())
     }
-    pub fn call_create_user(&self, args: NewUserArgs) -> Result<()> {
+    pub async fn call_create_user(&self, args: NewUserArgs<'_>) -> Result<()> {
         let NewUserArgs{token, username, minor, tos} = args;
-        let _ = &self.session.create_user(token, username, minor, tos)?;
+        let _ = &self.session.create_user(token, username, minor, tos).await?;
         println!("Success: Account created, from now on you are logged in on this device");
         match &self.call_save_data(LoginArgs{name: username, api_key: token}) {
             Ok(_) => (),
@@ -181,19 +193,19 @@ impl Worker {
         return Ok(());
 
     }
-    pub fn call_create_graph(&self, args: CreateGraphArgs) -> Result<()> {
+    pub async fn call_create_graph(&self, args: CreateGraphArgs<'_>) -> Result<()> {
         let CreateGraphArgs{name, id, number_type, color, unit} = args;
         let username = &self.name.to_owned().expect("Data should be there");
         let token = &self.api_key.to_owned().expect("Data should be there");
-        self.session.create_graph(username, token, id, name, number_type, unit, color)?;
+        self.session.create_graph(username, token, id, name, number_type, unit, color).await?;
         println!("Success: New graph created, check it out at https://pixe.la/v1/users/{}/graphs/{}.html.", username, id);
         return Ok(());
 
     }
-    pub fn call_streak(&self, args: StreakGetArgs) -> Result<()> {
+    pub async fn call_streak(&self, args: StreakGetArgs<'_>) -> Result<()> {
         let username = &self.name.to_owned().expect("Data should be there");
         let token = &self.api_key.to_owned().expect("Data should be there");
-        let streak = self.session.get_streak(username, token, &args.graph_id)?;
+        let streak = self.session.get_streak(username, token, &args.graph_id).await?;
         println!("{}", prepare_streak_string(streak, &args.graph_id));
         Ok(())
     }

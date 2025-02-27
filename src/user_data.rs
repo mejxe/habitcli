@@ -1,15 +1,14 @@
 use core::panic;
 use directories::ProjectDirs;
 use sled::{self};
-use std::{collections::HashMap, fs, path::{Path, PathBuf}};
+use std::{collections::HashMap, fmt::{write, Display}, fs, path::{Path, PathBuf}};
 use crate::{ error::{Error, Result}};
 use serde::{Deserialize, Serialize};
 
 pub struct UserData {
     pub token: String,
     pub name: String,
-    pub sum_graph: Option<String>,
-    pub graphs_to_sum: Option<Vec<String>>,
+    pub sum_graphs: Option<SumGraphsStruct>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -22,6 +21,24 @@ pub struct SumGraphStruct {
 pub struct SumGraphsStruct {
     pub sum_graphs: Vec<SumGraphStruct>
 }
+impl Display for SumGraphStruct {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut names = String::new();
+        self.graphs_to_sum.iter().for_each(|name| names.push_str(&format!("{name}, ")));
+        write!(f, "____________________________\n\nSum Graph: {}\nGraphs: {}",self.sum_graph_name, names)
+    }
+}
+impl Display for SumGraphsStruct {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut msg = String::new();
+        for sum_graph in &self.sum_graphs {
+            msg.push_str(&format!("{sum_graph}"));
+            msg.push('\n');
+        }
+        write!(f, "{msg}")
+    }
+}
+    
 
 impl SumGraphsStruct {
 
@@ -112,25 +129,8 @@ impl User {
         } else {
             return Err(Error::from(none_message));
         };
-        let sum_graph = if let Some(sum_graph_id) = self.database.get("sum_graph")? {
-            Some(std::str::from_utf8(&sum_graph_id).unwrap().to_string())
-        } else {
-            None
-        };
-        let mut graphs_to_sum: Vec<String> = Vec::new();
-        if let Some(graph_to_sum) = self.database.get("graph_to_sum1")? {
-            graphs_to_sum.push(std::str::from_utf8(&graph_to_sum).unwrap().to_string());
-        };
-        if let Some(graph_to_sum2) = self.database.get("graph_to_sum2")? {
-            graphs_to_sum.push(std::str::from_utf8(&graph_to_sum2).unwrap().to_string())
-        };
-        let mut graphs_result = None;
-        if graphs_to_sum.len() == 2 {
-            graphs_result = Some(graphs_to_sum.clone())
-        };
 
-
-        Ok(UserData { token, name, sum_graph, graphs_to_sum:graphs_result})
+        Ok(UserData { token, name, sum_graphs: None})
     }
     pub fn create_sum_graph_database(&self, data_to_sum: HashMap<String, String>) -> Result<()> {
         /*!

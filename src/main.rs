@@ -13,20 +13,20 @@ async fn main() -> Result<(), Error> {
     match args.command_type {
         args::CommandType::Signup(arguments) => {
             if let ParsedArguments::NewUserData(args) = arguments.into_args() {
-                worker.call_create_user(args)?;
+                worker.call_create_user(args).await?;
             }
         }
         args::CommandType::Send(arguments) => {
             worker.login()?;
             if let ParsedArguments::PixelArgs(args) = arguments.into_args() {
-                worker.call_send(args);
+                worker.call_send(args).await;
             }
         }
 
         args::CommandType::Get(arguments) => {
             worker.login()?;
             if let ParsedArguments::PixelArgs(args) = arguments.into_args() {
-                worker.call_get(args)
+                worker.call_get(args).await;
             }
         }
 
@@ -41,22 +41,22 @@ async fn main() -> Result<(), Error> {
         args::CommandType::Create(arguments) => {
             worker.login()?;
             if let ParsedArguments::GraphCreateArgs(args) = arguments.into_args() {
-                worker.call_create_graph(args)?;
+                worker.call_create_graph(args).await?;
             }
         }
         args::CommandType::List(_) => {
             worker.login()?;
-            worker.call_list()?;
+            worker.call_list().await?;
         }
         args::CommandType::Streak(arguments) => {
             worker.login()?;
             if let ParsedArguments::StreakGetArgs(args) = arguments.into_args() {
-                worker.call_streak(args)?
+                worker.call_streak(args).await?
             }
         }
         args::CommandType::SetupSum(arguments) => {
             if let ParsedArguments::SumGraphArgs(args) = arguments.into_args()  {
-                match worker.setup_graphs(args){
+                match worker.setup_graphs(args).await{
                     Ok(_) => (),
                     Err(e) => println!("{:?}",e)
                 }
