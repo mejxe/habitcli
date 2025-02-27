@@ -1,22 +1,23 @@
-use std::time;
+use std::{sync::Arc, time};
 
 /*
  Api to communicate with Pixe.la web api
  */
 use chrono::{self, NaiveDate};
-use reqwest::blocking;
+use reqwest::Client;
 use serde_json::{self, Value};
+use tokio::sync::Mutex;
 use crate::error;
 
 
 type Result<T> = error::Result<T>;
 
 pub struct Session {
-    client: blocking::Client,
+    client: Client,
 }
 impl Session {
     pub fn new() -> Session {
-        let client = blocking::Client::new();
+        let client = Client::new();
         Session {client}
     }
 
@@ -89,26 +90,6 @@ impl Session {
 
        
     }
-    pub fn get_graphs_to_sum_commits(&self, graph_names: Vec<String>, token: &str, username: &str, date: Option<&str> ) -> Result<String> {
-        let date: &str = match date {
-            Some(date) => date,
-            None => &chrono::Local::now().format("%Y%m%d").to_string(),
-        };
-        let mut commits_sum: u32 = 0;
-        let client = &self.client;
-        for graph in graph_names {
-            let url = format!("https://pixe.la/v1/users/{username}/graphs/{graph}/{date}");
-            let response = client.get(url).header("X-USER-TOKEN", token).send();
-            let response: serde_json::Value = response.unwrap().json().map_err(|err| error::Error::ReqwestError(err))?;
-            let value: u32 = match response.get("quantity") {
-                Some(quantity) => quantity.as_str().unwrap().parse().unwrap(),
-                None => 0,
-            };
-            commits_sum += value as u32
-            
-        }
-        Ok(commits_sum.to_string())
-    }
     pub fn create_user(&self, user_specified_token: &str, username: &str, not_minor:bool, tos:bool) -> Result<()> {
         let client = &self.client;
             let url = format!("https://pixe.la/v1/users/");
@@ -168,6 +149,25 @@ impl Session {
             Some(message) => {if message == false {return Err(error::Error::PixelaError(response.get("message").unwrap().to_string()))}}
         }
         Ok(calculate_streak(response))
+    }
+    pub async fn async_get_graph_val( 
+        url: &str,
+        date: &str,
+        token: &str,
+        incr_pointer: Arc<Mutex<u32>>,
+    ) -> Result<()> {
+        let client = Client::new();
+        let url = format!("{url}/{date}");
+
+        let response = client.get(url).header("X-USER-TOKEN", token).send().await;
+        let response: serde_json::Value = response.unwrap().json().await.map_err(|err| error::Error::ReqwestError(err))?;
+
+        let quantity: u32 = match response.get("quantity") {
+            Some(quantity) => quantity.as_u64().unwrap() as u32,
+            None => 0,
+        };
+        *incr_pointer.lock().await += quantity;
+        Ok(())
     }
 }
 

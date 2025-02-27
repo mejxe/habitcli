@@ -1,7 +1,9 @@
 use core::panic;
+use directories::ProjectDirs;
 use sled::{self};
-use std::{collections::HashMap, fs};
-use crate::error::{Error, Result};
+use std::{collections::HashMap, fs, path::{Path, PathBuf}};
+use crate::{ error::{Error, Result}};
+use serde::{Deserialize, Serialize};
 
 pub struct UserData {
     pub token: String,
@@ -9,6 +11,48 @@ pub struct UserData {
     pub sum_graph: Option<String>,
     pub graphs_to_sum: Option<Vec<String>>,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SumGraphStruct {
+    pub sum_graph_name: String,
+    pub graphs_to_sum: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct SumGraphsStruct {
+    pub sum_graphs: Vec<SumGraphStruct>
+}
+
+impl SumGraphsStruct {
+
+    pub fn build(sum_graphs: Vec<SumGraphStruct>) -> SumGraphsStruct {
+        SumGraphsStruct { sum_graphs }
+    }
+
+    pub fn save(&self) -> Result<()>{
+        let path = get_path();
+        dbg!(&path);
+        if !path.exists() { fs::create_dir(&path)? }
+        let toml_string = toml::to_string(self).unwrap();
+        fs::write(path.join("sum_graph.toml"), toml_string)?;
+        Ok(())
+    }
+    pub fn load() -> Result<Self> {
+        let path = get_path();
+        let new = toml::from_str(&fs::read_to_string(path.join("sum_graph.toml"))?);
+        if let Ok(new) = new {
+            return Ok(new);
+        } else { return Err(Error::MissingEntryInDatabase("Failed loading local Sum Graphs".to_string())); }
+        
+    }
+}
+impl SumGraphStruct {
+    pub fn new (sum_graph_name: String, graphs: Vec<String>) -> SumGraphStruct {
+        SumGraphStruct { sum_graph_name, graphs_to_sum: graphs }
+    }
+}
+
+
 
 pub struct User {
     database: sled::Db,
@@ -21,13 +65,12 @@ impl User {
     }
 }
 
-fn get_path() -> String {
+fn get_path() ->  PathBuf {
     let path = match directories::BaseDirs::new() {
         Some(path) => path,
         None => panic!("Unsupported OS"),
     };
-    let path = path.config_dir().to_str().unwrap();
-    format!("{path}/habitCLI").to_string()
+    path.config_dir().join("habitCLI")
 }
 
 fn create_config_dir() -> std::io::Result<()> {
@@ -108,6 +151,8 @@ impl User {
 }
 
 #[cfg(test)]
+mod tests {
+    use super::*;
 #[test]
 fn create_dir_works() {
     create_config_dir().unwrap();
@@ -121,4 +166,10 @@ fn test_getdata() {
     let token = std::str::from_utf8(&token);
     println!("{:?}", name);
     println!("{:?}", token);
+}
+    #[test]
+    fn loading_graphs() {
+        let graph = SumGraphsStruct::load();
+        dbg!(graph.unwrap());
+    }
 }

@@ -45,7 +45,7 @@ impl From<&str> for Error {
 }
 impl From<std::io::Error> for Error {
     fn from(err: std::io::Error) -> Self {
-        Self::MissingEntryInDatabase(err.into_inner().unwrap().to_string())
+        Self::MissingEntryInDatabase(err.to_string())
     }
 }
 impl From<sled::Error> for Error {

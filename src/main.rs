@@ -3,8 +3,8 @@ use habitcli::{
     args::{self, IntoArguments, ParsedArguments},
     pixela::Session, Worker, error::Error
 };
-
-fn main() -> Result<(), Error> {
+#[tokio::main]
+async fn main() -> Result<(), Error> {
     let args = args::HabitCLIArgs::parse();
 
     let session = Session::new();
@@ -56,7 +56,7 @@ fn main() -> Result<(), Error> {
         }
         args::CommandType::SetupSum(arguments) => {
             if let ParsedArguments::SumGraphArgs(args) = arguments.into_args()  {
-                match worker.call_save_sum_graph(args){
+                match worker.setup_graphs(args){
                     Ok(_) => (),
                     Err(e) => println!("{:?}",e)
                 }
@@ -70,7 +70,7 @@ fn main() -> Result<(), Error> {
         args::CommandType::Sum(arguments) => {
             worker.login()?;
             if let ParsedArguments::SumArgs(args) = arguments.into_args() {
-                match worker.handle_sum_graph(args) {
+                match worker.handle_sum_graph(args).await {
                     Ok(_) => (),
                     Err(e) => println!("{:?}",e)
                 }

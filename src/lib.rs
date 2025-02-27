@@ -4,12 +4,14 @@ pub mod pixela;
 pub mod user_data;
 pub mod error;
 
-use std::fmt::Display;
+use std::{fmt::Display, io::stdin, sync::Arc};
 
 use error::{Result,Error};
 
 use args::{CreateGraphArgs, LoginArgs, NewUserArgs, PixelArgs, StreakGetArgs, SumArgs, SumGraphArgs};
 use pixela::*;
+use tokio::{sync::Mutex, task::JoinHandle};
+use user_data::{SumGraphStruct, SumGraphsStruct};
 pub struct Worker {
     /*
     Worker struct that calls all the functions 
@@ -75,16 +77,40 @@ impl Worker {
             Err(e) => println!("There was an error. {:?}", e),
         };
     }
-    pub fn handle_sum_graph(&self, args: SumArgs) -> Result<()>{
-        let name = &self.name.to_owned().expect("Data should be there");
-        let api_key = &self.api_key.to_owned().expect("Data should be there");
-        let graph_names = vec![self.graph_to_sum1.clone().unwrap(), self.graph_to_sum2.clone().unwrap()];
-        let date = args.date;
-        let commits = self.session.get_graphs_to_sum_commits(graph_names, api_key, name, date)?;
+    pub async fn handle_sum_graph(&self, args: SumArgs<'_>) -> Result<()>{
+        let name = self.name.clone().unwrap();
+        let api_key = self.api_key.clone().unwrap();
+        let graphs = SumGraphsStruct::load()?;
+        let commits = Arc::new(Mutex::new(0));
+        let mut tasks: Vec<JoinHandle<()>> = Vec::new();
+        let date: String = match args.date {
+            Some(date) => date.to_string(),
+            None => chrono::Local::now().format("%Y%m%d").to_string(),
+        };
 
-        let date = args.date;
-        let url = &self.create_url(&self.sum_graph.clone().unwrap(), &name);
-        self.session.send_pixel(url, &commits, date, api_key)?;
+        for graph in graphs.sum_graphs {
+            for graph_name in graph.graphs_to_sum {
+                let name = name.clone();
+                let api_key = api_key.clone();
+                let date = date.clone();
+                let commits = Arc::clone(&commits);
+                let handle = tokio::spawn(async move {
+                    let url = format!("https://pixe.la/v1/users/{}/graphs/{}",name, graph_name);
+                    Session::async_get_graph_val(&url, &date, &api_key.clone(), commits.clone()).await;
+                });
+                tasks.push(handle);
+            }   
+            let url = format!("https://pixe.la/v1/users/{}/graphs/{}",name, graph.sum_graph_name);
+            self.session.send_pixel(&url, &commits.lock().await.to_string(), args.date, &api_key);
+            *commits.lock().await = 0;
+        }
+
+        for task in tasks {
+            task.await.unwrap();
+        }
+
+
+
         println!("Success! Your Sum Graph has been updated.");
         return Ok(());
     }
@@ -115,9 +141,22 @@ impl Worker {
         let user = user_data::User::new();
         Ok(user.set_user_data(args.name, args.api_key)?)
     }
-    pub fn call_save_sum_graph(&self, args: SumGraphArgs) -> Result<()> {
-        let user = user_data::User::new();
-        (user.setup_sum_graph(args.sum_graph, args.graph_to_sum1, args.graph_to_sum2))?;
+    pub fn setup_graphs(&self, args: SumGraphArgs) -> Result<()> {
+        let mut sum_graphs: Vec<SumGraphStruct> = vec![];
+        while sum_graphs.len() < args.sum_graph_amount {
+            let mut input: String = String::new();
+            let msg = if args.sum_graph_amount > 1 { format!("Enter data: (SumGraph_name graph_name1 ... graph_name{}", args.sum_graph_amount) } else {format!("Enter data: (SumGraph_name graph_name1")};
+            println!("{msg}");
+            stdin().read_line(&mut input).unwrap();
+            let input: Vec<_> = input.trim().split(" ").collect();
+            dbg!(&input);
+            let sum_graph_name = input.get(0).unwrap().to_string();
+            let mut graphs: Vec<String> = input.into_iter().map(|n| n.to_string()).collect();
+            graphs.remove(0);
+            sum_graphs.push(SumGraphStruct::new(sum_graph_name, graphs));
+        }
+        SumGraphsStruct::build(sum_graphs).save()?;
+
         Ok(())
     }
     pub fn call_list(&self) -> Result<()> {
@@ -162,6 +201,21 @@ impl Worker {
         println!("{}", &self);
         Ok(())
     }
+
+}
+#[cfg(test)]
+mod test {
+    use crate::{args::{SumArgs, SumGraphArgs}, pixela::Session, Worker};
+
+    #[test]
+    fn saving_graphs() {
+        let session = Session::new();
+        let worker = Worker::new(session);
+        let args = SumGraphArgs{sum_graph_amount: 2};
+        worker.setup_graphs(args).unwrap();
+
+    }
+
 
 }
 

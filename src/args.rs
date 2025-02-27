@@ -5,7 +5,7 @@ use clap::{Args, Parser, Subcommand};
 pub enum ParsedArguments<'a> {
     PixelArgs(PixelArgs<'a>),
     LoginArgs(LoginArgs<'a>),
-    SumGraphArgs(SumGraphArgs<'a>),
+    SumGraphArgs(SumGraphArgs),
     SumArgs(SumArgs<'a>),
     NewUserData(NewUserArgs<'a>),
     GraphCreateArgs(CreateGraphArgs<'a>),
@@ -47,12 +47,10 @@ pub struct SumArgs<'a> {
     pub date: Option<&'a str>,
 }
 #[derive(Debug)]
-pub struct SumGraphArgs<'a> {
+pub struct SumGraphArgs {
     // graphs that are suppossed to get summed up and sum_graph that stores id of a graph the
     // result is uploaded to
-    pub graph_to_sum1: &'a str,
-    pub graph_to_sum2: &'a str,
-    pub sum_graph: &'a str,
+    pub sum_graph_amount: usize,
 }
 
 #[derive(Debug)]
@@ -142,12 +140,8 @@ pub struct CreateGraph {
 }
 #[derive(Debug, Args)]
 pub struct SumGraph {
-    /// List of graphs you want to sum in a sum graph (just the graph names) [max 3].
-    #[clap(short,long,value_delimiter = ' ', num_args=2)]
-    graphs: Vec<String>,
-    /// Sum graph (just the name).
-    #[clap(short,long)]
-    sum_graph: String
+    /// Number of sum graphs you want to add.
+    num_of_sum_graphs: usize
 }
 impl IntoArguments for GetStreak {
     fn into_args(&self) -> ParsedArguments {
@@ -175,9 +169,7 @@ impl IntoArguments for NewUser {
 }
 impl IntoArguments for SumGraph {
     fn into_args(&self) -> ParsedArguments {
-        let graph1 = &self.graphs[0];
-        let graph2 = &self.graphs[1];
-        let args = SumGraphArgs {graph_to_sum1: graph1, graph_to_sum2: graph2, sum_graph: &self.sum_graph };
+        let args = SumGraphArgs {sum_graph_amount: self.num_of_sum_graphs};
         ParsedArguments::SumGraphArgs(args)
     }
 }
