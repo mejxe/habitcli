@@ -1,4 +1,3 @@
-//pub use args::IntoArguments;
 pub mod args;
 pub mod pixela;
 pub mod user_data;
@@ -8,7 +7,7 @@ use std::{fmt::Display, io::stdin, sync::Arc};
 
 use error::{Error, Result, SumGraphError, SumGraphErrorKind};
 
-use args::{CreateGraphArgs, LoginArgs, NewUserArgs, PixelArgs, StreakGetArgs, SumArgs, SumGraphArgs};
+use args::{CreateGraphArgs, LoginArgs, NewUserArgs, PixelArgs, RemoveArgs, StreakGetArgs, SumArgs, SumGraphArgs};
 use pixela::*;
 use tokio::{sync::Mutex, task::JoinHandle};
 use user_data::{SumGraphStruct, SumGraphsStruct};
@@ -54,7 +53,7 @@ impl Worker {
         let quantity = &args.quantity;
         let name = &self.name.to_owned().expect("Data should be there");
         let api_key = &self.api_key.to_owned().expect("Data should be there");
-        let url = &self.create_url(graph, &name);
+        let url = &self.create_url_graph(graph, &name);
         match &self
             .session
             .send_pixel(url, quantity, date.as_deref(), &api_key).await
@@ -68,8 +67,8 @@ impl Worker {
         };
     }
     pub async fn handle_sum_graph(&self, args: SumArgs<'_>) -> Result<()>{
-        let name = self.name.clone().unwrap();
-        let api_key = self.api_key.clone().unwrap();
+        let name = self.name.clone().expect("Should be logged in");
+        let api_key = self.api_key.clone().expect("Should be logged in");
         let graphs = if let Some(graphs) = self.sum_graphs.as_ref() {
             graphs
         } else { return Err(Error::MissingEntryInDatabase("Sum graphs are not properly set up".to_string())) };
@@ -79,8 +78,16 @@ impl Worker {
             Some(date) => date.to_string(),
             None => chrono::Local::now().format("%Y%m%d").to_string(),
         };
+        let mut done_anything = false;
 
         for graph in &graphs.sum_graphs {
+
+            if let Some(specified_name) = args.name {
+                if graph.sum_graph_name != specified_name {
+                    continue;
+                }
+            };
+
             for graph_name in &graph.graphs_to_sum {
                 let name = name.clone();
                 let api_key = api_key.clone();
@@ -93,8 +100,9 @@ impl Worker {
                 });
                 tasks.push(handle);
             }   
-            for task in &mut tasks {
-                task.await.unwrap();
+            for _ in 0..tasks.len() {
+                let popped = tasks.pop().unwrap();
+                popped.await.unwrap();
             }
             let url = format!("https://pixe.la/v1/users/{}/graphs/{}",name, graph.sum_graph_name);
             let sendable_commits = commits.lock().await.to_string();
@@ -102,8 +110,12 @@ impl Worker {
             self.session.send_pixel(&url, &sendable_commits, args.date, &api_key).await.unwrap();
             dbg!(sendable_commits);
             *commits.lock().await = 0;
+            done_anything = true;
         }
 
+        if !done_anything {
+            return Err(Error::SumGraphError(SumGraphError::new(SumGraphErrorKind::GraphNotFoundLocally)));
+        }
         println!("Success! Your Sum Graph has been updated.");
         return Ok(());
     }
@@ -114,7 +126,7 @@ impl Worker {
         let date = args.date;
         let name = &self.name.to_owned().expect("Data should be there");
         let api_key = &self.api_key.to_owned().expect("Data should be there");
-        let url = &self.create_url(graph, &name);
+        let url = &self.create_url_graph(graph, &name);
         match &self
             .session
             .get_pixel_info(url, graph, date.as_deref(), &api_key).await
@@ -127,7 +139,7 @@ impl Worker {
             Err(e) => println!("There was an error. {:?}", e),
         };
     }
-    fn create_url(&self, graph: &str, name: &str) -> String {
+    fn create_url_graph(&self, graph: &str, name: &str) -> String {
         format!("https://pixe.la/v1/users/{name}/graphs/{graph}")
     }
     pub fn call_save_data(&self, args: LoginArgs) -> Result<()> {
@@ -145,29 +157,11 @@ impl Worker {
         let correct_names = if let Ok(CallResult::List(list)) = correct_names {
             list
         } else { return Err(Error::MissingEntryInDatabase("Unable to verify graph names, possibly graphs are non-existent".to_string()))};
+        input_graph_names(&mut sum_graphs, &mut sum_graph_names_duplicate_tracker, args.sum_graph_amount, &correct_names)?;
             
-
-        while sum_graphs.len() < args.sum_graph_amount {
-            let mut input: String = String::new();
-            println!("Enter data: (SumGraph_name graph_name(s)");
-            stdin().read_line(&mut input).unwrap();
-            let input: Vec<_> = input.trim().split(" ").collect();
-            dbg!(&input);
-            let sum_graph_name = input.get(0).unwrap().to_string();
-
-            // check for duplicates
-            match sum_graph_names_duplicate_tracker.contains(&sum_graph_name) { 
-                true => sum_graph_names_duplicate_tracker.push(sum_graph_name.clone()),
-                false => return Err(Error::SumGraphError(SumGraphError::new(error::SumGraphErrorKind::RepeatingNames)))
-            }
-
-            let mut graphs: Vec<String> = input.into_iter().map(|n| n.to_string()).collect();
-            graphs.dedup();
-            graphs.iter().try_for_each(|name| -> Result<()> {if !correct_names.contains(name) {return Err(Error::SumGraphError(SumGraphError::new(SumGraphErrorKind::IncorrectNames)))}; return Ok(())})?;
-            graphs.remove(0);
-            sum_graphs.push(SumGraphStruct::new(sum_graph_name, graphs));
-        }
-        SumGraphsStruct::build(sum_graphs).save()?;
+            
+        SumGraphsStruct::build(sum_graphs)?.save()?;
+        println!("Sum Graphs saved locally. You can now use 'sum'.");
 
         Ok(())
     }
@@ -202,6 +196,15 @@ impl Worker {
         return Ok(());
 
     }
+    pub async fn call_remove_graph(&self, args: RemoveArgs<'_> ) -> Result<()> {
+        let username = &self.name.to_owned().expect("Data should be there");
+        let token = &self.api_key.to_owned().expect("Data should be there");
+        let graph_name = args.graph_name;
+        self.session.remove_graph(username, token, graph_name).await?;
+        println!("Success: A graph has been removed from your account.");
+        return Ok(());
+    }
+
     pub async fn call_streak(&self, args: StreakGetArgs<'_>) -> Result<()> {
         let username = &self.name.to_owned().expect("Data should be there");
         let token = &self.api_key.to_owned().expect("Data should be there");
@@ -215,16 +218,43 @@ impl Worker {
     }
 
 }
+fn input_graph_names(sum_graphs: &mut Vec<SumGraphStruct>, sum_graph_names_duplicate_tracker: &mut Vec<String>, sum_graphs_amount: usize, correct_names: &Vec<String>) -> Result<()> {
+    let mut correct_names_string = String::new(); 
+    correct_names.iter().for_each(|name| correct_names_string.push_str(&format!("{name}\n")));
+    println!("Graphs available for your account:\n{correct_names_string}");
+    while sum_graphs.len() < sum_graphs_amount {
+        let mut input: String = String::new();
+        println!("Enter data #{}: (sum_graph_id graph_id(s)...", sum_graphs.len()+1);
+        stdin().read_line(&mut input).unwrap();
+        let input: Vec<_> = input.trim().split(" ").collect();
+        let sum_graph_name = input.get(0).unwrap().to_string();
+
+        // check for duplicates
+        match sum_graph_names_duplicate_tracker.contains(&sum_graph_name) { 
+            true => return Err(Error::SumGraphError(SumGraphError::new(error::SumGraphErrorKind::RepeatingNames))),
+            false => sum_graph_names_duplicate_tracker.push(sum_graph_name.clone()),
+        }
+
+        let mut graphs: Vec<String> = input.into_iter().map(|n| n.to_string()).collect();
+        graphs.dedup();
+        graphs.iter().try_for_each(|name| -> Result<()> {if !correct_names.contains(name) {return Err(Error::SumGraphError(SumGraphError::new(SumGraphErrorKind::IncorrectNames)))}; return Ok(())})?;
+        graphs.remove(0);
+        sum_graphs.push(SumGraphStruct::new(sum_graph_name, graphs));
+        println!("Input accepted.");
+    }
+        Ok(())
+
+}
 #[cfg(test)]
 mod test {
     use crate::{args::{SumArgs, SumGraphArgs}, pixela::Session, Worker};
 
-    #[test]
-    fn saving_graphs() {
+    #[tokio::test]
+    async fn saving_graphs() {
         let session = Session::new();
         let worker = Worker::new(session);
         let args = SumGraphArgs{sum_graph_amount: 2};
-        worker.setup_graphs(args).unwrap();
+        worker.setup_graphs(args).await.unwrap();
 
     }
 

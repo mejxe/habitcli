@@ -7,7 +7,7 @@ use chrono::{self, NaiveDate};
 use reqwest::Client;
 use serde_json::{self, Value};
 use tokio::sync::Mutex;
-use crate::error;
+use crate::error::{self, Error};
 
 
 type Result<T> = error::Result<T>;
@@ -70,7 +70,6 @@ impl Session {
             .send();
 
         let response: serde_json::Value = response.await.unwrap().json().await.map_err(|err| error::Error::ReqwestError(err))?;
-        dbg!(&response);
 
         Ok(CallResult::ApiResponse(Message::new(response)))
     }
@@ -85,7 +84,7 @@ impl Session {
         let graphs = if let Some(graphs) = response.get("graphs") {graphs.to_owned()} else { return Err(error::Error::MissingEntryInDatabase("No graphs to display".to_string()))}; // dfq error handling
         let graphs: Vec<String> = graphs.as_array().unwrap()
             .iter()
-            .map(|obj| obj.get("id").unwrap().to_string())
+            .map(|obj| obj.get("id").unwrap().to_string().replace("/", "").replace('"', "").to_string())
             .collect();
         Ok(CallResult::List(graphs))
 
@@ -164,12 +163,25 @@ impl Session {
         let response: serde_json::Value = response.unwrap().json().await.map_err(|err| error::Error::ReqwestError(err))?;
 
         let quantity: u32 = match response.get("quantity") {
-            Some(quantity) => quantity.as_str().unwrap().parse::<u32>().unwrap(),
+            Some(quantity) => quantity.as_str().unwrap().parse::<u32>().map_err(|_| error::Error::PixelaError(response.to_string()))?,
             None => 0,
         };
         *incr_pointer.lock().await += quantity;
         Ok(())
     }
+    pub async fn remove_graph(&self, username: &str, token: &str, graph_name: &str) -> Result<()> {
+        let response = self.client
+            .delete(format!("https://pixe.la/v1/users/{username}/graphs/{graph_name}"))
+            .header("X-USER-TOKEN", token)
+            .send();
+        let response: serde_json::Value = response.await.unwrap().json().await.map_err(|err| error::Error::PixelaError(err.to_string()))?;
+        match response.get("isSuccess") {
+            None => return Err(error::Error::PixelaError(response.get("message").unwrap().to_string())),
+            Some(message) => {if message == false {return Err(error::Error::PixelaError(response.get("message").unwrap().to_string()))}}
+        }
+        return Ok(());
+    }
+
 }
 
 // Functions not tied to the Pixela web api below

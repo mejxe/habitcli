@@ -44,6 +44,12 @@ async fn main() -> Result<(), Error> {
                 worker.call_create_graph(args).await?;
             }
         }
+        args::CommandType::Remove(arguments) => {
+            worker.login()?;
+            if let ParsedArguments::RemoveArgs(args) = arguments.into_args() {
+                worker.call_remove_graph(args).await?;
+            }
+        }
         args::CommandType::List(_) => {
             worker.login()?;
             worker.call_list().await?;
@@ -55,10 +61,11 @@ async fn main() -> Result<(), Error> {
             }
         }
         args::CommandType::SetupSum(arguments) => {
+            worker.login()?;
             if let ParsedArguments::SumGraphArgs(args) = arguments.into_args()  {
                 match worker.setup_graphs(args).await{
                     Ok(_) => (),
-                    Err(e) => println!("{:?}",e)
+                    Err(e) => println!("{e}")
                 }
             }
         }

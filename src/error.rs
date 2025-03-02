@@ -18,6 +18,8 @@ pub enum SumGraphErrorKind {
     RepeatingNames,
     ErrorIOFile(std::io::Error),
     IncorrectNames,
+    GraphNotFoundLocally,
+    GraphsSumEachOther,
 
 }
 
@@ -31,7 +33,9 @@ impl SumGraphError {
         let msg = match kind {
             SumGraphErrorKind::RepeatingNames => None,
             SumGraphErrorKind::ErrorIOFile(ref err) => Some(err.to_string()),
-            SumGraphErrorKind::IncorrectNames => Some(String::from("Graphs with such names do not exist for your username"))
+            SumGraphErrorKind::IncorrectNames => Some(String::from("Graphs with such names do not exist for your username.")),
+            SumGraphErrorKind::GraphNotFoundLocally => Some(String::from("Couldn't locate a sum graph with provided name in your config.")),
+            SumGraphErrorKind::GraphsSumEachOther => Some(String::from("Graphs sum each other which leads to unexpected behaviour, ex: SumGraphA {SumGraphB...}, SumGraphB{SumGraphA...}")),
         };
 
         SumGraphError { kind, msg }

@@ -9,12 +9,13 @@ pub enum ParsedArguments<'a> {
     SumArgs(SumArgs<'a>),
     NewUserData(NewUserArgs<'a>),
     GraphCreateArgs(CreateGraphArgs<'a>),
-    StreakGetArgs(StreakGetArgs<'a>)
+    StreakGetArgs(StreakGetArgs<'a>),
+    RemoveArgs(RemoveArgs<'a>),
 }
 
-// a func that turns data from each command into an enum standarized enum variant
-pub trait IntoArguments {
-    fn into_args(&self) -> ParsedArguments;
+#[derive(Debug)]
+pub struct RemoveArgs<'a> {
+    pub graph_name: &'a str,
 }
 #[derive(Debug)]
 pub struct StreakGetArgs<'a> {
@@ -45,6 +46,7 @@ pub struct PixelArgs<'a> {
 #[derive(Debug)]
 pub struct SumArgs<'a> {
     pub date: Option<&'a str>,
+    pub name: Option<&'a str>,
 }
 #[derive(Debug)]
 pub struct SumGraphArgs {
@@ -77,6 +79,8 @@ pub enum CommandType {
     Data(GetData),
     /// Creates a new graph on Pixela.
     Create(CreateGraph),
+    /// Removes a graph on Pixela.
+    Remove(RemoveGraph),
     /// Use to send pixels to Pixela.
     Send(SendPixel),
     /// Use to get pixels data from Pixela.
@@ -87,8 +91,9 @@ pub enum CommandType {
     Streak(GetStreak),
     /// Setup sum graph functionality.
     SetupSum(SumGraph),
-    /// Sums today progress of your "graphs to sum" and uploads it to sum graph.
+    /// Sums all progress of your graphs.
     Sum(SumGraphs),
+    
 }
 
 #[derive(Debug, Args)]
@@ -107,15 +112,24 @@ pub struct NewUser {
 pub struct GetList {}
 
 #[derive(Debug, Args)]
+pub struct RemoveGraph {
+    /// Graph name.
+    pub graph_name: String
+}
+#[derive(Debug, Args)]
 pub struct GetStreak {
-    /// Graph id
+    /// Graph id.
     graph_id: String
 }
 #[derive(Debug, Args)]
 pub struct SumGraphs {
     /// Optional date to sum from. By default today.
     #[clap(short,long)]
-    date: Option<String> 
+    date: Option<String> ,
+    /// Specific (saved) sum graph that you want updated. When not passed all sum graphs will be
+    /// updated.
+    #[clap(short,long)]
+    name: Option<String> 
 }
 
 #[derive(Debug, Args)]
@@ -143,10 +157,48 @@ pub struct SumGraph {
     /// Number of sum graphs you want to add.
     num_of_sum_graphs: usize
 }
-impl IntoArguments for GetStreak {
+        
+#[derive(Debug, Args)]
+pub struct LoginUser {
+    /// Pixela username.
+    #[arg()]
+    name: String,
+    #[arg()]
+    /// Pixela api key.
+    api_key: String,
+}
+#[derive(Debug, Args)]
+pub struct SendPixel {
+    /// Date of a pixel that you wish to modify. Format: "yyyymmdd". Leave blank to upload for today.
+    #[arg(short, long)]
+    pub date: Option<String>,
+    /// Graph id to interact with. (the name in the url on pixela)
+    pub graph_id: String,
+    /// Number of commits that you wish to send.
+    pub quantity: String,
+}
+
+#[derive(Debug, Args)]
+pub struct GetPixel {
+    /// Date of a pixel that you wish to modify. Format: "yyyymmdd". Leave blank to upload for today.
+    #[arg(short, long)]
+    date: Option<String>,
+    /// Graph name to interact with. (the name in the url on pixela)
+    graph_id: String,
+}
+
+// structs with this trait can be parsed into arguments for main
+pub trait IntoArguments {
+    fn into_args(&self) -> ParsedArguments;
+}
+
+impl IntoArguments for RemoveGraph {
     fn into_args(&self) -> ParsedArguments {
-        let graph_id = &self.graph_id;
-        let args = StreakGetArgs{graph_id};
+        let args = RemoveArgs{graph_name: &self.graph_name};
+        return ParsedArguments::RemoveArgs(args)
+    }
+}
+impl IntoArguments for GetStreak { fn into_args(&self) -> ParsedArguments { let graph_id = &self.graph_id; let args = StreakGetArgs{graph_id};
         return ParsedArguments::StreakGetArgs(args)
     }
 }
@@ -173,22 +225,14 @@ impl IntoArguments for SumGraph {
         ParsedArguments::SumGraphArgs(args)
     }
 }
+
 impl IntoArguments for SumGraphs {
     fn into_args(&self) -> ParsedArguments {
-        let args = SumArgs{date: self.date.as_deref()};
+        let args = SumArgs{date: self.date.as_deref(), name: self.name.as_deref() };
         ParsedArguments::SumArgs(args)
     }
 }
-        
-#[derive(Debug, Args)]
-pub struct LoginUser {
-    /// Pixela username.
-    #[arg()]
-    name: String,
-    #[arg()]
-    /// Pixela api key.
-    api_key: String,
-}
+
 impl IntoArguments for LoginUser {
     fn into_args(&self) -> ParsedArguments {
         ParsedArguments::LoginArgs(LoginArgs {
@@ -197,16 +241,7 @@ impl IntoArguments for LoginUser {
         })
     }
 }
-#[derive(Debug, Args)]
-pub struct SendPixel {
-    /// Date of a pixel that you wish to modify. Format: "yyyymmdd". Leave blank to upload for today.
-    #[arg(short, long)]
-    pub date: Option<String>,
-    /// Graph id to interact with. (the name in the url on pixela)
-    pub graph_id: String,
-    /// Number of commits that you wish to send.
-    pub quantity: String,
-}
+
 impl IntoArguments for SendPixel {
     fn into_args(&self) -> ParsedArguments {
         let date = &self.date;
@@ -218,15 +253,6 @@ impl IntoArguments for SendPixel {
             quantity,
         })
     }
-}
-
-#[derive(Debug, Args)]
-pub struct GetPixel {
-    /// Date of a pixel that you wish to modify. Format: "yyyymmdd". Leave blank to upload for today.
-    #[arg(short, long)]
-    date: Option<String>,
-    /// Graph name to interact with. (the name in the url on pixela)
-    graph_id: String,
 }
 
 impl IntoArguments for GetPixel {
