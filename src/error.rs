@@ -3,8 +3,7 @@
 Error handling and the Error type for the project, all errors converted into standarized output
 
  */
-use std::{
-     fmt::{write, Debug, Display}, io};
+use std::fmt::{Debug, Display};
     
 pub enum Error {
     MissingEntryInDatabase(String),

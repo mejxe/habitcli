@@ -1,7 +1,6 @@
 use core::panic;
-use directories::ProjectDirs;
 use sled::{self};
-use std::{collections::HashMap, fmt::{write, Display}, fs, path::{Path, PathBuf}};
+use std::{fmt::Display, fs, path::PathBuf};
 use crate::error::{Error, Result, SumGraphError, SumGraphErrorKind};
 use serde::{Deserialize, Serialize};
 

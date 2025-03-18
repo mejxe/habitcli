@@ -1,4 +1,4 @@
-use std::{sync::Arc, time};
+use std::sync::Arc;
 
 /*
  Api to communicate with Pixe.la web api
@@ -7,7 +7,7 @@ use chrono::{self, NaiveDate};
 use reqwest::Client;
 use serde_json::{self, Value};
 use tokio::sync::Mutex;
-use crate::error::{self, Error};
+use crate::error::{self};
 
 
 type Result<T> = error::Result<T>;
