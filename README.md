@@ -26,7 +26,13 @@ setup-sum  Setup sum graph functionality
 sum        Sums today progress of your "graphs to sum" and uploads it to sum graph
 ```
 
-### Sum graphs (w.i.p)
-As of right now you can specify two graphs of which the progress will be summarized to a third graph. 
-You set it all up using ``` setup-sum ``` then ``` sum ``` to push to the sum graph (third graph you specified).
+### Sum graphs 
+~~As of right now you can specify two graphs of which the progress will be summarized to a third graph. 
+You set it all up using ``` setup-sum ``` then ``` sum ``` to push to the sum graph (third graph you specified).~~
+While setting up sum graph functionality you will be asked for a number of sumgraphs you want to have.
+These sumgraphs can depend on many graphs now and it shouldn't really slow down the summing proccess because of async graph commit pulling.
+However be wary about your amount of sum graphs, because they are summed in a blocking way. (sum graphs depending on other sum graphs would be impossible)
+After commiting all your progress to graphs simply run sum and it will sum up your graphs in a correct order. (if its possible)
+
+
 
