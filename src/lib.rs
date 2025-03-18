@@ -73,7 +73,7 @@ impl Worker {
             graphs
         } else { return Err(Error::MissingEntryInDatabase("Sum graphs are not properly set up".to_string())) };
         let commits = Arc::new(Mutex::new(0));
-        let mut tasks: Vec<JoinHandle<()>> = Vec::new();
+        let mut tasks: Vec<JoinHandle<Result<()>>> = Vec::new();
         let date: String = match args.date {
             Some(date) => date.to_string(),
             None => chrono::Local::now().format("%Y%m%d").to_string(),
@@ -96,19 +96,19 @@ impl Worker {
                 let graph_name = graph_name.clone();
                 let handle = tokio::spawn(async move {
                     let url = format!("https://pixe.la/v1/users/{}/graphs/{}",name, graph_name);
-                    Session::async_get_graph_val(&url, &date, &api_key.clone(), commits.clone()).await.unwrap();
+                    Session::async_get_graph_val(&url, &date, &api_key.clone(), commits.clone()).await?;
+                    Ok(())
                 });
                 tasks.push(handle);
             }   
             for _ in 0..tasks.len() {
                 let popped = tasks.pop().unwrap();
-                popped.await.unwrap();
+                popped.await.unwrap()?;
             }
             let url = format!("https://pixe.la/v1/users/{}/graphs/{}",name, graph.sum_graph_name);
             let sendable_commits = commits.lock().await.to_string();
-            dbg!(&commits.lock().await.to_string());
-            self.session.send_pixel(&url, &sendable_commits, args.date, &api_key).await.unwrap();
-            dbg!(sendable_commits);
+            self.session.send_pixel(&url, &sendable_commits, args.date, &api_key).await?;
+            println!("Summed {}.", graph.sum_graph_name);
             *commits.lock().await = 0;
             done_anything = true;
         }
